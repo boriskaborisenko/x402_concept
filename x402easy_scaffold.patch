@@ -1,0 +1,1371 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..c4e9c44
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,18 @@
++node_modules/
++dist/
++build/
++.next/
++.env
++.env.local
++.DS_Store
++.ai/out/
++coverage/
++*.log
++
++frontend/node_modules/
++frontend/dist/
++backend/node_modules/
++backend/dist/
++
++package-lock.json
++pnpm-lock.yaml
++yarn.lock
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..55104bf
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,124 @@
++# x402Easy Minimal Multichain Payment Prototype
++
++This is the first minimal implementation step for the x402Easy concept:
++
++- React frontend
++- Node.js backend
++- WalletConnect-based EVM wallet connection
++- BSC Testnet payment flow
++- Algorand Testnet payment flow
++- payment receivers moved into backend config
++- backend creates payment intents and verifies submitted transactions at a basic level
++
++The current goal is not CCIP/CCTP yet. The current goal is:
++
++> connect wallet → detect chain/type → create payment intent → make testnet payment → submit tx id/hash to backend → backend verifies enough to mark paid.
++
++## Project structure
++
++```txt
++frontend/              React + Vite app
++backend/               Node.js + Express API
++backend/src/config/    payment receiver config
++backend/src/services/  chain verification helpers
++```
++
++## Setup
++
++Install dependencies:
++
++```bash
++npm install
++```
++
++Create backend env:
++
++```bash
++cp backend/.env.example backend/.env
++```
++
++Edit `backend/.env` and add real testnet receiving addresses:
++
++```env
++BSC_TESTNET_RECEIVER=0xYourBscTestnetReceiver
++ALGORAND_TESTNET_RECEIVER=YourAlgorandTestnetReceiver
++```
++
++The frontend already contains your WalletConnect project id in `frontend/src/config/chains.ts`:
++
++```txt
++b3ff0b5fe2c59275fc24684910bab667
++```
++
++You can override it with:
++
++```bash
++VITE_WALLETCONNECT_PROJECT_ID=your_project_id
++```
++
++## Run locally
++
++```bash
++npm run dev
++```
++
++Frontend:
++
++```txt
++http://localhost:5173
++```
++
++Backend:
++
++```txt
++http://localhost:8787
++```
++
++## How payment flow works
++
++### BSC Testnet
++
++1. User connects EVM wallet through WalletConnect / injected wallet.
++2. App requires BSC Testnet chain id `97`.
++3. Backend creates a payment intent.
++4. Frontend sends native test BNB to configured receiver.
++5. Frontend submits transaction hash to backend.
++6. Backend reads the tx receipt and tx data through BSC testnet RPC.
++7. Backend checks:
++   - tx success
++   - destination address equals configured receiver
++   - value is at least required amount
++
++### Algorand Testnet
++
++1. User connects Pera Wallet.
++2. Backend creates a payment intent.
++3. Frontend builds a native ALGO payment transaction.
++4. Pera signs and sends it.
++5. Frontend submits tx id to backend.
++6. Backend checks the transaction through Algonode indexer.
++7. Backend checks:
++   - receiver equals configured receiver
++   - amount is at least required amount
++   - transaction is confirmed
++
++## Important limitations
++
++This is intentionally minimal.
++
++Current version does **not** yet include:
++
++- production x402 protocol implementation
++- CCTP settlement
++- CCIP messages
++- USDC/ASA payments
++- real KYC / verify_hash layer
++- fiat BUY execution layer
++- persistent database
++- replay-safe production-grade payment intent storage
++- authentication
++- refunds
++- compliance logic
++
++Current backend keeps payment intents in memory. Restarting backend clears them.
++
++## Next steps
++
++Recommended next steps:
++
++1. Add real receiver addresses in `backend/.env`.
++2. Test BSC Testnet native payment.
++3. Test Algorand Testnet native payment.
++4. Replace in-memory intent storage with SQLite/Postgres.
++5. Add `verify_hash` field to intents.
++6. Add agent policy checks.
++7. Add USDC support.
++8. Add CCTP/CCIP settlement experiments.
++9. Add vault settlement abstraction.
++
++## Payment config
++
++Payment receivers are intentionally centralized in:
++
++```txt
++backend/src/config/paymentConfig.js
++```
++
++This is the first step toward routing all chain-specific payment acceptance through config instead of hardcoding addresses in the frontend.
+diff --git a/backend/.env.example b/backend/.env.example
+new file mode 100644
+index 0000000..edc6cf4
+--- /dev/null
++++ b/backend/.env.example
+@@ -0,0 +1,18 @@
++PORT=8787
++
++# Frontend origin for CORS
++FRONTEND_ORIGIN=http://localhost:5173
++
++# BSC Testnet RPC. Public endpoint is okay for testing, use your own RPC for reliability.
++BSC_TESTNET_RPC=https://data-seed-prebsc-1-s1.binance.org:8545
++
++# Put your BSC testnet receiving address here.
++BSC_TESTNET_RECEIVER=0x0000000000000000000000000000000000000000
++
++# Put your Algorand testnet receiving address here.
++ALGORAND_TESTNET_RECEIVER=REPLACE_WITH_ALGORAND_TESTNET_ADDRESS
++
++# Algonode public endpoints for testing.
++ALGORAND_TESTNET_ALGOD=https://testnet-api.algonode.cloud
++ALGORAND_TESTNET_INDEXER=https://testnet-idx.algonode.cloud
+diff --git a/backend/package.json b/backend/package.json
+new file mode 100644
+index 0000000..b65c77d
+--- /dev/null
++++ b/backend/package.json
+@@ -0,0 +1,19 @@
++{
++  "name": "x402easy-backend",
++  "version": "0.1.0",
++  "private": true,
++  "type": "module",
++  "scripts": {
++    "dev": "node --watch src/server.js",
++    "start": "node src/server.js"
++  },
++  "dependencies": {
++    "algosdk": "^3.2.1",
++    "cors": "^2.8.5",
++    "dotenv": "^16.4.7",
++    "express": "^4.21.2",
++    "nanoid": "^5.0.9",
++    "viem": "^2.23.2",
++    "zod": "^3.24.1"
++  }
++}
+diff --git a/backend/src/config/paymentConfig.js b/backend/src/config/paymentConfig.js
+new file mode 100644
+index 0000000..662e936
+--- /dev/null
++++ b/backend/src/config/paymentConfig.js
+@@ -0,0 +1,53 @@
++const required = (name, fallback = '') => process.env[name] || fallback;
++
++export const paymentConfig = {
++  defaultPriceUsd: '0.01',
++
++  networks: {
++    bscTestnet: {
++      id: 'bsc-testnet',
++      kind: 'evm',
++      displayName: 'BSC Testnet',
++      chainId: 97,
++      nativeCurrency: {
++        symbol: 'tBNB',
++        decimals: 18
++      },
++      // Minimal prototype uses native test BNB.
++      // Later this should move to stablecoin / x402-compatible asset.
++      asset: {
++        type: 'native',
++        symbol: 'tBNB',
++        decimals: 18
++      },
++      amount: '0.0001',
++      receiver: required('BSC_TESTNET_RECEIVER', '0x0000000000000000000000000000000000000000'),
++      rpcUrl: required('BSC_TESTNET_RPC', 'https://data-seed-prebsc-1-s1.binance.org:8545')
++    },
++
++    algorandTestnet: {
++      id: 'algorand-testnet',
++      kind: 'algorand',
++      displayName: 'Algorand Testnet',
++      chainId: 'testnet-v1.0',
++      nativeCurrency: {
++        symbol: 'ALGO',
++        decimals: 6
++      },
++      // Minimal prototype uses native test ALGO.
++      // Later this can become USDC ASA or another accepted asset.
++      asset: {
++        type: 'native',
++        symbol: 'ALGO',
++        decimals: 6
++      },
++      amount: '0.001',
++      receiver: required('ALGORAND_TESTNET_RECEIVER', 'REPLACE_WITH_ALGORAND_TESTNET_ADDRESS'),
++      algodUrl: required('ALGORAND_TESTNET_ALGOD', 'https://testnet-api.algonode.cloud'),
++      indexerUrl: required('ALGORAND_TESTNET_INDEXER', 'https://testnet-idx.algonode.cloud')
++    }
++  }
++};
++
++export const getNetworkConfig = (networkId) => {
++  return Object.values(paymentConfig.networks).find((network) => network.id === networkId);
++};
+diff --git a/backend/src/routes/configRoutes.js b/backend/src/routes/configRoutes.js
+new file mode 100644
+index 0000000..381a928
+--- /dev/null
++++ b/backend/src/routes/configRoutes.js
+@@ -0,0 +1,26 @@
++import { Router } from 'express';
++import { paymentConfig } from '../config/paymentConfig.js';
++
++export const configRoutes = Router();
++
++configRoutes.get('/payment-config', (_req, res) => {
++  const networks = Object.values(paymentConfig.networks).map((network) => ({
++    id: network.id,
++    kind: network.kind,
++    displayName: network.displayName,
++    chainId: network.chainId,
++    nativeCurrency: network.nativeCurrency,
++    asset: network.asset,
++    amount: network.amount,
++    receiver: network.receiver,
++    isReceiverConfigured:
++      network.kind === 'evm'
++        ? !/^0x0{40}$/i.test(network.receiver)
++        : !network.receiver.startsWith('REPLACE_WITH_')
++  }));
++
++  res.json({
++    defaultPriceUsd: paymentConfig.defaultPriceUsd,
++    networks
++  });
++});
+diff --git a/backend/src/routes/paymentRoutes.js b/backend/src/routes/paymentRoutes.js
+new file mode 100644
+index 0000000..220870d
+--- /dev/null
++++ b/backend/src/routes/paymentRoutes.js
+@@ -0,0 +1,121 @@
++import { Router } from 'express';
++import { nanoid } from 'nanoid';
++import { z } from 'zod';
++import { getNetworkConfig } from '../config/paymentConfig.js';
++import { createPaymentIntent, getPaymentIntent, updatePaymentIntent } from '../services/intentStore.js';
++import { verifyAlgorandPayment } from '../services/verifyAlgorand.js';
++import { verifyBscPayment } from '../services/verifyBsc.js';
++
++export const paymentRoutes = Router();
++
++const createIntentSchema = z.object({
++  networkId: z.string().min(1),
++  payer: z.string().min(1),
++  resourceId: z.string().min(1).default('demo-resource'),
++  verifyHash: z.string().optional(),
++  agentId: z.string().optional()
++});
++
++const submitPaymentSchema = z.object({
++  intentId: z.string().min(1),
++  txHash: z.string().min(1),
++  payer: z.string().min(1).optional()
++});
++
++paymentRoutes.post('/payment-intents', (req, res) => {
++  const parsed = createIntentSchema.safeParse(req.body);
++
++  if (!parsed.success) {
++    return res.status(400).json({
++      error: 'invalid_request',
++      details: parsed.error.flatten()
++    });
++  }
++
++  const network = getNetworkConfig(parsed.data.networkId);
++
++  if (!network) {
++    return res.status(400).json({
++      error: 'unsupported_network',
++      message: `Network is not configured: ${parsed.data.networkId}`
++    });
++  }
++
++  const isReceiverConfigured =
++    network.kind === 'evm'
++      ? !/^0x0{40}$/i.test(network.receiver)
++      : !network.receiver.startsWith('REPLACE_WITH_');
++
++  if (!isReceiverConfigured) {
++    return res.status(400).json({
++      error: 'receiver_not_configured',
++      message: `Set receiver address for ${network.displayName} in backend/.env first.`
++    });
++  }
++
++  const now = Date.now();
++  const intent = createPaymentIntent({
++    id: `pi_${nanoid(16)}`,
++    status: 'created',
++    networkId: network.id,
++    networkKind: network.kind,
++    resourceId: parsed.data.resourceId,
++    payer: parsed.data.payer,
++    receiver: network.receiver,
++    asset: network.asset,
++    amount: network.amount,
++    verifyHash: parsed.data.verifyHash || null,
++    agentId: parsed.data.agentId || null,
++    nonce: nanoid(24),
++    createdAt: new Date(now).toISOString(),
++    expiresAt: new Date(now + 10 * 60 * 1000).toISOString(),
++    txHash: null,
++    verification: null
++  });
++
++  return res.json({ intent });
++});
++
++paymentRoutes.get('/payment-intents/:intentId', (req, res) => {
++  const intent = getPaymentIntent(req.params.intentId);
++
++  if (!intent) {
++    return res.status(404).json({ error: 'intent_not_found' });
++  }
++
++  return res.json({ intent });
++});
++
++paymentRoutes.post('/payments/submit', async (req, res) => {
++  const parsed = submitPaymentSchema.safeParse(req.body);
++
++  if (!parsed.success) {
++    return res.status(400).json({
++      error: 'invalid_request',
++      details: parsed.error.flatten()
++    });
++  }
++
++  const intent = getPaymentIntent(parsed.data.intentId);
++
++  if (!intent) {
++    return res.status(404).json({ error: 'intent_not_found' });
++  }
++
++  if (new Date(intent.expiresAt).getTime() < Date.now()) {
++    updatePaymentIntent(intent.id, { status: 'expired' });
++    return res.status(400).json({ error: 'intent_expired' });
++  }
++
++  const network = getNetworkConfig(intent.networkId);
++
++  try {
++    const verification =
++      network.kind === 'evm'
++        ? await verifyBscPayment({ intent, txHash: parsed.data.txHash, network })
++        : await verifyAlgorandPayment({ intent, txHash: parsed.data.txHash, network });
++
++    const updatedIntent = updatePaymentIntent(intent.id, {
++      status: verification.ok ? 'paid' : 'failed',
++      txHash: parsed.data.txHash,
++      verification
++    });
++
++    return res.json({ intent: updatedIntent });
++  } catch (error) {
++    const updatedIntent = updatePaymentIntent(intent.id, {
++      status: 'verification_error',
++      txHash: parsed.data.txHash,
++      verification: {
++        ok: false,
++        reason: error.message
++      }
++    });
++
++    return res.status(500).json({ error: 'verification_error', intent: updatedIntent });
++  }
++});
+diff --git a/backend/src/server.js b/backend/src/server.js
+new file mode 100644
+index 0000000..579456f
+--- /dev/null
++++ b/backend/src/server.js
+@@ -0,0 +1,29 @@
++import 'dotenv/config';
++import cors from 'cors';
++import express from 'express';
++import { configRoutes } from './routes/configRoutes.js';
++import { paymentRoutes } from './routes/paymentRoutes.js';
++
++const app = express();
++const port = Number(process.env.PORT || 8787);
++
++app.use(
++  cors({
++    origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
++  })
++);
++app.use(express.json());
++
++app.get('/health', (_req, res) => {
++  res.json({ ok: true, service: 'x402easy-backend' });
++});
++
++app.use('/api', configRoutes);
++app.use('/api', paymentRoutes);
++
++app.use((err, _req, res, _next) => {
++  console.error(err);
++  res.status(500).json({ error: 'internal_error' });
++});
++
++app.listen(port, () => {
++  console.log(`x402Easy backend running on http://localhost:${port}`);
++});
+diff --git a/backend/src/services/intentStore.js b/backend/src/services/intentStore.js
+new file mode 100644
+index 0000000..bb82b68
+--- /dev/null
++++ b/backend/src/services/intentStore.js
+@@ -0,0 +1,22 @@
++const paymentIntents = new Map();
++
++export const createPaymentIntent = (intent) => {
++  paymentIntents.set(intent.id, intent);
++  return intent;
++};
++
++export const getPaymentIntent = (intentId) => {
++  return paymentIntents.get(intentId) || null;
++};
++
++export const updatePaymentIntent = (intentId, patch) => {
++  const current = getPaymentIntent(intentId);
++
++  if (!current) {
++    return null;
++  }
++
++  const updated = { ...current, ...patch, updatedAt: new Date().toISOString() };
++  paymentIntents.set(intentId, updated);
++  return updated;
++};
+diff --git a/backend/src/services/verifyAlgorand.js b/backend/src/services/verifyAlgorand.js
+new file mode 100644
+index 0000000..538940f
+--- /dev/null
++++ b/backend/src/services/verifyAlgorand.js
+@@ -0,0 +1,68 @@
++import algosdk from 'algosdk';
++
++const algoToMicroAlgos = (amount) => Math.round(Number(amount) * 1_000_000);
++
++export const verifyAlgorandPayment = async ({ intent, txHash, network }) => {
++  const indexer = new algosdk.Indexer('', network.indexerUrl, '');
++
++  const tx = await indexer.lookupTransactionByID(txHash).do();
++  const transaction = tx.transaction;
++
++  if (!transaction) {
++    return {
++      ok: false,
++      reason: 'transaction_not_found'
++    };
++  }
++
++  const payment = transaction['payment-transaction'];
++
++  if (!payment) {
++    return {
++      ok: false,
++      reason: 'not_a_payment_transaction'
++    };
++  }
++
++  const receiver = payment.receiver;
++  const amount = Number(payment.amount || 0);
++  const requiredAmount = algoToMicroAlgos(intent.amount);
++  const confirmedRound = transaction['confirmed-round'];
++
++  if (!confirmedRound) {
++    return {
++      ok: false,
++      reason: 'transaction_not_confirmed'
++    };
++  }
++
++  if (receiver !== intent.receiver) {
++    return {
++      ok: false,
++      reason: 'wrong_receiver',
++      expected: intent.receiver,
++      actual: receiver
++    };
++  }
++
++  if (amount < requiredAmount) {
++    return {
++      ok: false,
++      reason: 'amount_too_low',
++      expected: requiredAmount,
++      actual: amount
++    };
++  }
++
++  return {
++    ok: true,
++    chain: network.id,
++    txHash,
++    receiver,
++    amount,
++    requiredAmount,
++    confirmedRound
++  };
++};
+diff --git a/backend/src/services/verifyBsc.js b/backend/src/services/verifyBsc.js
+new file mode 100644
+index 0000000..7bb447b
+--- /dev/null
++++ b/backend/src/services/verifyBsc.js
+@@ -0,0 +1,72 @@
++import { createPublicClient, formatEther, http, isAddressEqual, parseEther } from 'viem';
++import { bscTestnet } from 'viem/chains';
++
++export const verifyBscPayment = async ({ intent, txHash, network }) => {
++  const client = createPublicClient({
++    chain: bscTestnet,
++    transport: http(network.rpcUrl)
++  });
++
++  const [tx, receipt] = await Promise.all([
++    client.getTransaction({ hash: txHash }),
++    client.getTransactionReceipt({ hash: txHash })
++  ]);
++
++  if (!receipt || receipt.status !== 'success') {
++    return {
++      ok: false,
++      reason: 'transaction_not_successful'
++    };
++  }
++
++  if (!tx.to) {
++    return {
++      ok: false,
++      reason: 'missing_receiver'
++    };
++  }
++
++  const expectedReceiver = intent.receiver;
++  const actualReceiver = tx.to;
++
++  if (!isAddressEqual(actualReceiver, expectedReceiver)) {
++    return {
++      ok: false,
++      reason: 'wrong_receiver',
++      expected: expectedReceiver,
++      actual: actualReceiver
++    };
++  }
++
++  const requiredValue = parseEther(intent.amount);
++
++  if (tx.value < requiredValue) {
++    return {
++      ok: false,
++      reason: 'amount_too_low',
++      expected: intent.amount,
++      actual: formatEther(tx.value)
++    };
++  }
++
++  if (intent.payer && tx.from && !isAddressEqual(tx.from, intent.payer)) {
++    return {
++      ok: false,
++      reason: 'wrong_payer',
++      expected: intent.payer,
++      actual: tx.from
++    };
++  }
++
++  return {
++    ok: true,
++    chain: network.id,
++    txHash,
++    from: tx.from,
++    receiver: actualReceiver,
++    amount: formatEther(tx.value),
++    requiredAmount: intent.amount,
++    blockNumber: receipt.blockNumber.toString()
++  };
++};
+diff --git a/frontend/index.html b/frontend/index.html
+new file mode 100644
+index 0000000..9382afd
+--- /dev/null
++++ b/frontend/index.html
+@@ -0,0 +1,13 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>x402Easy Prototype</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.jsx"></script>
++  </body>
++</html>
+diff --git a/frontend/package.json b/frontend/package.json
+new file mode 100644
+index 0000000..f45fb77
+--- /dev/null
++++ b/frontend/package.json
+@@ -0,0 +1,23 @@
++{
++  "name": "x402easy-frontend",
++  "version": "0.1.0",
++  "private": true,
++  "type": "module",
++  "scripts": {
++    "dev": "vite --host 0.0.0.0",
++    "build": "vite build",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "@perawallet/connect": "^1.4.2",
++    "@tanstack/react-query": "^5.64.2",
++    "@walletconnect/ethereum-provider": "^2.17.0",
++    "algosdk": "^3.2.1",
++    "react": "^18.3.1",
++    "react-dom": "^18.3.1",
++    "viem": "^2.23.2",
++    "wagmi": "^2.14.7"
++  },
++  "devDependencies": {
++    "@vitejs/plugin-react": "^4.3.4",
++    "vite": "^6.0.7"
++  }
++}
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+new file mode 100644
+index 0000000..b5c2c56
+--- /dev/null
++++ b/frontend/src/App.jsx
+@@ -0,0 +1,268 @@
++import { useEffect, useMemo, useState } from 'react';
++import algosdk from 'algosdk';
++import { PeraWalletConnect } from '@perawallet/connect';
++import { parseEther } from 'viem';
++import { useAccount, useConnect, useDisconnect, useSendTransaction, useSwitchChain } from 'wagmi';
++import { bscTestnet } from 'wagmi/chains';
++import { apiBaseUrl, peraWallet, supportedNetworks } from './config/chains.js';
++
++const formatJson = (value) => JSON.stringify(value, null, 2);
++
++const fetchJson = async (path, options = {}) => {
++  const response = await fetch(`${apiBaseUrl}${path}`, {
++    headers: {
++      'Content-Type': 'application/json',
++      ...(options.headers || {})
++    },
++    ...options
++  });
++
++  const payload = await response.json().catch(() => ({}));
++
++  if (!response.ok) {
++    throw new Error(payload.message || payload.error || `Request failed: ${response.status}`);
++  }
++
++  return payload;
++};
++
++export default function App() {
++  const [paymentConfig, setPaymentConfig] = useState(null);
++  const [selectedNetworkId, setSelectedNetworkId] = useState('bsc-testnet');
++  const [intent, setIntent] = useState(null);
++  const [lastResult, setLastResult] = useState(null);
++  const [error, setError] = useState('');
++  const [isBusy, setIsBusy] = useState(false);
++  const [algoAccounts, setAlgoAccounts] = useState([]);
++
++  const evmAccount = useAccount();
++  const { connectors, connect, isPending: isConnectPending } = useConnect();
++  const { disconnect } = useDisconnect();
++  const { switchChainAsync } = useSwitchChain();
++  const { sendTransactionAsync } = useSendTransaction();
++
++  const selectedNetwork = useMemo(() => {
++    return paymentConfig?.networks?.find((network) => network.id === selectedNetworkId) || null;
++  }, [paymentConfig, selectedNetworkId]);
++
++  const isBscSelected = selectedNetworkId === 'bsc-testnet';
++  const isAlgorandSelected = selectedNetworkId === 'algorand-testnet';
++
++  useEffect(() => {
++    fetchJson('/api/payment-config')
++      .then(setPaymentConfig)
++      .catch((err) => setError(err.message));
++  }, []);
++
++  useEffect(() => {
++    peraWallet
++      .reconnectSession()
++      .then((accounts) => {
++        if (accounts?.length) {
++          setAlgoAccounts(accounts);
++        }
++      })
++      .catch(() => undefined);
++  }, []);
++
++  const currentPayer = isAlgorandSelected ? algoAccounts[0] : evmAccount.address;
++
++  const createIntent = async () => {
++    setError('');
++    setLastResult(null);
++
++    if (!selectedNetwork) {
++      setError('Network config not loaded yet.');
++      return null;
++    }
++
++    if (!currentPayer) {
++      setError('Connect wallet first.');
++      return null;
++    }
++
++    setIsBusy(true);
++
++    try {
++      const payload = await fetchJson('/api/payment-intents', {
++        method: 'POST',
++        body: JSON.stringify({
++          networkId: selectedNetwork.id,
++          payer: currentPayer,
++          resourceId: 'demo-resource'
++        })
++      });
++
++      setIntent(payload.intent);
++      return payload.intent;
++    } catch (err) {
++      setError(err.message);
++      return null;
++    } finally {
++      setIsBusy(false);
++    }
++  };
++
++  const submitPayment = async ({ intentId, txHash, payer }) => {
++    const payload = await fetchJson('/api/payments/submit', {
++      method: 'POST',
++      body: JSON.stringify({ intentId, txHash, payer })
++    });
++
++    setLastResult(payload.intent);
++    setIntent(payload.intent);
++  };
++
++  const payWithBsc = async () => {
++    setError('');
++    setLastResult(null);
++
++    if (!evmAccount.isConnected || !evmAccount.address) {
++      setError('Connect EVM wallet first.');
++      return;
++    }
++
++    setIsBusy(true);
++
++    try {
++      if (evmAccount.chainId !== bscTestnet.id) {
++        await switchChainAsync({ chainId: bscTestnet.id });
++      }
++
++      const activeIntent = intent?.status === 'created' ? intent : await createIntent();
++
++      if (!activeIntent) {
++        return;
++      }
++
++      const txHash = await sendTransactionAsync({
++        to: activeIntent.receiver,
++        value: parseEther(activeIntent.amount)
++      });
++
++      await submitPayment({ intentId: activeIntent.id, txHash, payer: evmAccount.address });
++    } catch (err) {
++      setError(err.shortMessage || err.message);
++    } finally {
++      setIsBusy(false);
++    }
++  };
++
++  const connectAlgorand = async () => {
++    setError('');
++
++    try {
++      const accounts = await peraWallet.connect();
++      setAlgoAccounts(accounts);
++    } catch (err) {
++      if (err?.data?.type !== 'CONNECT_MODAL_CLOSED') {
++        setError(err.message || 'Failed to connect Algorand wallet.');
++      }
++    }
++  };
++
++  const disconnectAlgorand = async () => {
++    await peraWallet.disconnect();
++    setAlgoAccounts([]);
++  };
++
++  const payWithAlgorand = async () => {
++    setError('');
++    setLastResult(null);
++
++    if (!algoAccounts[0]) {
++      setError('Connect Algorand wallet first.');
++      return;
++    }
++
++    setIsBusy(true);
++
++    try {
++      const activeIntent = intent?.status === 'created' ? intent : await createIntent();
++
++      if (!activeIntent) {
++        return;
++      }
++
++      const paramsResponse = await fetch('https://testnet-api.algonode.cloud/v2/transactions/params');
++      const suggestedParams = await paramsResponse.json();
++      const amountMicroAlgos = Math.round(Number(activeIntent.amount) * 1_000_000);
++
++      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
++        sender: algoAccounts[0],
++        receiver: activeIntent.receiver,
++        amount: amountMicroAlgos,
++        suggestedParams
++      });
++
++      const txGroups = [{ txn, signers: [algoAccounts[0]] }];
++      const signedTxns = await peraWallet.signTransaction([txGroups]);
++
++      const sendResponse = await fetch('https://testnet-api.algonode.cloud/v2/transactions', {
++        method: 'POST',
++        headers: {
++          'Content-Type': 'application/x-binary'
++        },
++        body: signedTxns[0]
++      });
++
++      if (!sendResponse.ok) {
++        const text = await sendResponse.text();
++        throw new Error(text || 'Failed to submit Algorand transaction.');
++      }
++
++      const sendPayload = await sendResponse.json();
++      const txHash = sendPayload.txId;
++
++      await submitPayment({ intentId: activeIntent.id, txHash, payer: algoAccounts[0] });
++    } catch (err) {
++      setError(err.message || 'Algorand payment failed.');
++    } finally {
++      setIsBusy(false);
++    }
++  };
++
++  return (
++    <main className="shell">
++      <section className="hero">
++        <p className="eyebrow">x402Easy prototype</p>
++        <h1>Chain-aware payment intent demo</h1>
++        <p>
++          Minimal first step: connect wallet, select BSC Testnet or Algorand Testnet,
++          create payment intent, send testnet payment, and verify it on the backend.
++        </p>
++      </section>
++
++      <section className="card">
++        <h2>1. Select payment network</h2>
++        <div className="network-grid">
++          {paymentConfig?.networks?.map((network) => (
++            <button
++              key={network.id}
++              className={network.id === selectedNetworkId ? 'network selected' : 'network'}
++              onClick={() => {
++                setSelectedNetworkId(network.id);
++                setIntent(null);
++                setLastResult(null);
++                setError('');
++              }}
++            >
++              <strong>{network.displayName}</strong>
++              <span>
++                Pay {network.amount} {network.asset.symbol}
++              </span>
++              <small>{network.isReceiverConfigured ? 'Receiver configured' : 'Receiver missing'}</small>
++            </button>
++          ))}
++        </div>
++      </section>
++
++      <section className="card">
++        <h2>2. Connect wallet</h2>
++
++        {isBscSelected && (
++          <div className="row-wrap">
++            {evmAccount.isConnected ? (
++              <>
++                <div>
++                  <strong>EVM connected</strong>
++                  <p>{evmAccount.address}</p>
++                  <p>Chain id: {evmAccount.chainId || 'unknown'}</p>
++                </div>
++                <button onClick={() => disconnect()}>Disconnect EVM</button>
++              </>
++            ) : (
++              connectors.map((connector) => (
++                <button
++                  key={connector.uid}
++                  disabled={isConnectPending}
++                  onClick={() => connect({ connector })}
++                >
++                  Connect {connector.name}
++                </button>
++              ))
++            )}
++          </div>
++        )}
++
++        {isAlgorandSelected && (
++          <div className="row-wrap">
++            {algoAccounts[0] ? (
++              <>
++                <div>
++                  <strong>Algorand connected</strong>
++                  <p>{algoAccounts[0]}</p>
++                </div>
++                <button onClick={disconnectAlgorand}>Disconnect Algorand</button>
++              </>
++            ) : (
++              <button onClick={connectAlgorand}>Connect Pera Wallet</button>
++            )}
++          </div>
++        )}
++      </section>
++
++      <section className="card">
++        <h2>3. Create intent and pay</h2>
++        {selectedNetwork && (
++          <div className="summary">
++            <p>
++              <strong>Receiver:</strong> {selectedNetwork.receiver}
++            </p>
++            <p>
++              <strong>Amount:</strong> {selectedNetwork.amount} {selectedNetwork.asset.symbol}
++            </p>
++          </div>
++        )}
++
++        <div className="actions">
++          <button disabled={isBusy || !currentPayer} onClick={createIntent}>
++            Create payment intent
++          </button>
++          {isBscSelected && (
++            <button disabled={isBusy || !evmAccount.isConnected} onClick={payWithBsc}>
++              Pay on BSC Testnet
++            </button>
++          )}
++          {isAlgorandSelected && (
++            <button disabled={isBusy || !algoAccounts[0]} onClick={payWithAlgorand}>
++              Pay on Algorand Testnet
++            </button>
++          )}
++        </div>
++
++        {isBusy && <p className="muted">Working...</p>}
++        {error && <p className="error">{error}</p>}
++      </section>
++
++      {intent && (
++        <section className="card">
++          <h2>Payment intent</h2>
++          <pre>{formatJson(intent)}</pre>
++        </section>
++      )}
++
++      {lastResult && (
++        <section className="card success-card">
++          <h2>Verification result</h2>
++          <pre>{formatJson(lastResult)}</pre>
++        </section>
++      )}
++    </main>
++  );
++}
+diff --git a/frontend/src/config/chains.js b/frontend/src/config/chains.js
+new file mode 100644
+index 0000000..89d189f
+--- /dev/null
++++ b/frontend/src/config/chains.js
+@@ -0,0 +1,18 @@
++import { PeraWalletConnect } from '@perawallet/connect';
++
++export const walletConnectProjectId =
++  import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'b3ff0b5fe2c59275fc24684910bab667';
++
++export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
++
++export const supportedNetworks = {
++  bscTestnet: {
++    id: 'bsc-testnet',
++    chainId: 97
++  },
++  algorandTestnet: {
++    id: 'algorand-testnet',
++    chainId: 'testnet-v1.0'
++  }
++};
++
++export const peraWallet = new PeraWalletConnect({ chainId: 416002 });
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+new file mode 100644
+index 0000000..075b0d1
+--- /dev/null
++++ b/frontend/src/main.jsx
+@@ -0,0 +1,40 @@
++import React from 'react';
++import ReactDOM from 'react-dom/client';
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
++import { WagmiProvider, createConfig, http } from 'wagmi';
++import { bscTestnet } from 'wagmi/chains';
++import { injected, walletConnect } from 'wagmi/connectors';
++import App from './App.jsx';
++import { walletConnectProjectId } from './config/chains.js';
++import './styles.css';
++
++const wagmiConfig = createConfig({
++  chains: [bscTestnet],
++  connectors: [
++    injected(),
++    walletConnect({
++      projectId: walletConnectProjectId,
++      metadata: {
++        name: 'x402Easy Prototype',
++        description: 'Minimal multichain x402Easy payment prototype',
++        url: window.location.origin,
++        icons: [`${window.location.origin}/favicon.ico`]
++      },
++      showQrModal: true
++    })
++  ],
++  transports: {
++    [bscTestnet.id]: http()
++  }
++});
++
++const queryClient = new QueryClient();
++
++ReactDOM.createRoot(document.getElementById('root')).render(
++  <React.StrictMode>
++    <WagmiProvider config={wagmiConfig}>
++      <QueryClientProvider client={queryClient}>
++        <App />
++      </QueryClientProvider>
++    </WagmiProvider>
++  </React.StrictMode>
++);
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+new file mode 100644
+index 0000000..0011333
+--- /dev/null
++++ b/frontend/src/styles.css
+@@ -0,0 +1,180 @@
++:root {
++  color: #f6f7fb;
++  background: #0d1117;
++  font-family:
++    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
++  font-synthesis: none;
++  text-rendering: optimizeLegibility;
++  -webkit-font-smoothing: antialiased;
++  -moz-osx-font-smoothing: grayscale;
++}
++
++* {
++  box-sizing: border-box;
++}
++
++body {
++  margin: 0;
++  min-width: 320px;
++  min-height: 100vh;
++  background:
++    radial-gradient(circle at top left, rgba(57, 108, 255, 0.28), transparent 32rem),
++    radial-gradient(circle at bottom right, rgba(0, 205, 143, 0.18), transparent 28rem),
++    #0d1117;
++}
++
++button {
++  border: 0;
++  border-radius: 14px;
++  padding: 0.85rem 1rem;
++  color: #0d1117;
++  background: #f6f7fb;
++  font-weight: 750;
++  cursor: pointer;
++}
++
++button:disabled {
++  opacity: 0.55;
++  cursor: not-allowed;
++}
++
++pre {
++  overflow: auto;
++  max-height: 420px;
++  padding: 1rem;
++  border-radius: 16px;
++  background: rgba(0, 0, 0, 0.35);
++  border: 1px solid rgba(255, 255, 255, 0.08);
++  color: #dce7ff;
++  font-size: 0.85rem;
++}
++
++p {
++  color: #b9c3d6;
++  line-height: 1.6;
++}
++
++.shell {
++  width: min(1050px, calc(100% - 32px));
++  margin: 0 auto;
++  padding: 48px 0 72px;
++}
++
++.hero {
++  margin-bottom: 24px;
++}
++
++.eyebrow {
++  color: #85ffd3;
++  text-transform: uppercase;
++  letter-spacing: 0.16em;
++  font-size: 0.78rem;
++  font-weight: 800;
++}
++
++.hero h1 {
++  max-width: 780px;
++  margin: 0;
++  font-size: clamp(2.5rem, 8vw, 5.75rem);
++  line-height: 0.92;
++  letter-spacing: -0.07em;
++}
++
++.hero p {
++  max-width: 760px;
++  font-size: 1.08rem;
++}
++
++.card {
++  margin-top: 18px;
++  padding: 24px;
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  border-radius: 26px;
++  background: rgba(16, 22, 34, 0.78);
++  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
++  backdrop-filter: blur(12px);
++}
++
++.card h2 {
++  margin: 0 0 16px;
++  font-size: 1.12rem;
++}
++
++.network-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
++  gap: 14px;
++}
++
++.network {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  gap: 6px;
++  min-height: 118px;
++  color: #f6f7fb;
++  background: rgba(255, 255, 255, 0.08);
++  border: 1px solid rgba(255, 255, 255, 0.08);
++  text-align: left;
++}
++
++.network.selected {
++  border-color: rgba(133, 255, 211, 0.9);
++  background: rgba(133, 255, 211, 0.12);
++}
++
++.network span,
++.network small {
++  color: #b9c3d6;
++}
++
++.row-wrap {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 12px;
++  align-items: center;
++}
++
++.row-wrap p {
++  margin: 4px 0;
++  overflow-wrap: anywhere;
++}
++
++.actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 12px;
++  margin-top: 18px;
++}
++
++.summary {
++  padding: 14px 16px;
++  border-radius: 18px;
++  background: rgba(255, 255, 255, 0.055);
++}
++
++.summary p {
++  margin: 4px 0;
++  overflow-wrap: anywhere;
++}
++
++.muted {
++  color: #9da9bd;
++}
++
++.error {
++  padding: 12px 14px;
++  border-radius: 14px;
++  background: rgba(255, 83, 112, 0.12);
++  color: #ff9bad;
++}
++
++.success-card {
++  border-color: rgba(133, 255, 211, 0.38);
++}
+diff --git a/frontend/vite.config.js b/frontend/vite.config.js
+new file mode 100644
+index 0000000..a6e8701
+--- /dev/null
++++ b/frontend/vite.config.js
+@@ -0,0 +1,7 @@
++import { defineConfig } from 'vite';
++import react from '@vitejs/plugin-react';
++
++export default defineConfig({
++  plugins: [react()],
++  server: { port: 5173 }
++});
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..2382f7f
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,17 @@
++{
++  "name": "x402easy-prototype",
++  "version": "0.1.0",
++  "private": true,
++  "scripts": {
++    "dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
++    "build": "npm run build --workspace frontend",
++    "start": "npm run start --workspace backend"
++  },
++  "workspaces": [
++    "frontend",
++    "backend"
++  ],
++  "devDependencies": {
++    "concurrently": "^9.1.2"
++  }
++}
