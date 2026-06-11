@@ -19,6 +19,7 @@ merchant API     ↘  proxy /api
 | **`x402-module/`** | Backend/sidecar — **основная реализация** |
 | **`frontend/`** | Demo checkout UI |
 | **`INTEGRATOR.md`** | Proxy, docker, merchant integration |
+| **`ROADMAP.md`** | **Production plan — 🔴 критичные блокеры** (ledger, binding, state machine, tests) |
 | **`README.md`** | Quick start для человека |
 
 ## НЕ трогать / НЕ читать без явной задачи
@@ -53,6 +54,8 @@ POST /api/payments/submit         → 202
 GET  /api/payments/:id/events     → SSE
 POST /api/verify-payment          → legacy sync
 GET  /api/resources, /api/config, /api/networks
+GET  /admin/balances, /admin/settlement/queue  (ADMIN_TOKEN or X-Merchant-Admin: 1)
+POST /admin/settlement/sweep|confirm|run
 ```
 
 SSE user events: `payment_submitted`, `payment_confirming`, `payment_verified`, `resource_unlocked`, `payment_failed`. **Без** `settlement_*` в user stream.
@@ -79,15 +82,35 @@ x402-module/src/
   adapters/evm.rs, adapters/algo.rs
 ```
 
+## Settlement (testnet_hybrid)
+
+- `settlement.targetNetworkId` + `vault` = куда собираем (BSC / Algorand / …)
+- EOA treasury + same chain → worker auto-settle (proof = payment tx)
+- `treasury.type: Contract` → `sweep_pending` → `SWEEP_OPERATOR_PRIVATE_KEY` → `sweepAll`
+- Cross-chain → `pending` until `POST /admin/settlement/confirm` with payout tx to vault
+- Deploy: `contracts/` + [docs/SETTLEMENT_TESTNET.md](docs/SETTLEMENT_TESTNET.md)
+
 ## Docker
 
 - `docker compose up x402-rust` → host **4001** (Node service в compose — legacy, не default)
+
+## Production — не делать вид, что готово
+
+Текущий sidecar = **demo/PoC**. Перед задачами «production / security / ledger / replay» — читать **`ROADMAP.md`**, раздел **🔴 КРИТИЧНО**:
+
+1. Persistent ledger (SQLite → Postgres), не in-memory
+2. Intent/resource binding в verify (не только txHash)
+3. State machine + atomic DB transitions
+4. Tx consumption + idempotency
+5. `/admin/*` + real auth (не `X-Merchant-Admin: 1`)
+6. CORS allowlist
+7. Integration tests (replay, wrong amount, concurrent submit)
 
 ## Правила для агента
 
 1. Не читать `backend/` если задача про sidecar/UI/config.
 2. Не создавать коммиты без запроса.
-3. Не редактировать plan-файлы.
+3. Не редактировать `.cursor/plans/*`; **`ROADMAP.md`** — живой engineering plan, обновлять по запросу.
 4. Минимальный diff; не раздувать код.
 5. После правок в `frontend/` или `x402-module/` — сборка/compile по смыслу.
 

@@ -158,6 +158,7 @@ Settlement worker runs automatically every 30s (mock bridge proof in demo).
 ## Security notes
 
 - Bind to localhost or private network; expose only via your proxy
-- Do not expose `/api/ledger` publicly in production
+- Do not expose `/api/ledger` publicly in production — planned move to `/admin/*` with token auth ([ROADMAP.md](ROADMAP.md) 🔴)
 - Use HTTPS in production; SSE requires `proxy_buffering off`
 - Rotate treasury keys; use contract treasury when volume requires auto-sweep
+- **Production blockers** (persistent ledger, intent binding, replay protection, CORS, tests): [ROADMAP.md](ROADMAP.md)

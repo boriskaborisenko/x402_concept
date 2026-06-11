@@ -1,0 +1,14 @@
+{
+  "name": "x402-bridge-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bridge:algo-to-bsc": "node scripts/algo-to-bsc.mjs"
+  },
+  "dependencies": {
+    "@allbridge/bridge-core-sdk": "^3.23.0",
+    "algosdk": "^2.9.0",
+    "dotenv": "^16.4.5"
+  }
+}

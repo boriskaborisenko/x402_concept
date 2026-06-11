@@ -7,7 +7,7 @@
       "settlement": {
         "networkId": "bsc",
         "asset": "USDC",
-        "address": "0x9a4DAdD33721FBd749F07727625AdDB41e8265dA",
+        "address": "0x70Bb7E5d8FD35e75ea93d025DD91613232c9898f",
         "frequency": "daily",
         "minimum_payout": "10.00"
       }
@@ -15,15 +15,25 @@
   },
   "settlement": {
     "targetNetworkId": "bsc",
+    "mode": "testnet_hybrid",
     "vault": {
       "networkId": "bsc",
-      "address": "0x9a4DAdD33721FBd749F07727625AdDB41e8265dA",
+      "address": "0x70Bb7E5d8FD35e75ea93d025DD91613232c9898f",
       "type": "EOA",
-      "note": "Future: single vault after CCTP/CCIP aggregation"
+      "note": "BSC vault — receives USDC from treasury contract sweepAll"
+    },
+    "sponsor": {
+      "mode": "relayer",
+      "note": "SWEEP_OPERATOR_PRIVATE_KEY pays gas for treasury.sweepAll on Contract treasuries"
+    },
+    "batch": {
+      "minUsd": "1.00",
+      "intervalSec": 300
     }
   },
   "rates": {
     "BNB": 600,
+    "POL": 0.15,
     "ALGO": 0.2,
     "USDC": 1,
     "USDCa": 1
@@ -39,8 +49,13 @@
       "explorerUrl": "https://testnet.bscscan.com/tx/",
       "facilitator": null,
       "treasury": {
-        "address": "0x9a4DAdD33721FBd749F07727625AdDB41e8265dA",
-        "type": "EOA"
+        "address": "0x5b2e0D8A711F2BE3F6A8ae4586920c3f090E4264",
+        "type": "Contract",
+        "contract": {
+          "name": "X402Treasury",
+          "version": "1",
+          "sweepOperator": "0xeb2ac19b0D72517b2642562578f439094B0DB6b2"
+        }
       },
       "native": {
         "symbol": "BNB",
@@ -62,6 +77,34 @@
           "decimals": 18,
           "recommended": false,
           "settlementRail": "ccip"
+        }
+      ]
+    },
+    {
+      "id": "polygon-amoy",
+      "name": "Polygon Amoy Testnet",
+      "type": "evm",
+      "enabled": true,
+      "chainId": 80002,
+      "rpcUrl": "https://rpc-amoy.polygon.technology",
+      "explorerUrl": "https://amoy.polygonscan.com/tx/",
+      "facilitator": null,
+      "treasury": {
+        "address": "0x9a4DAdD33721FBd749F07727625AdDB41e8265dA",
+        "type": "EOA"
+      },
+      "native": {
+        "symbol": "POL",
+        "decimals": 18
+      },
+      "paymentTokens": [
+        {
+          "id": "polygon_usdc",
+          "symbol": "USDC",
+          "address": "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+          "decimals": 6,
+          "recommended": true,
+          "settlementRail": "cctp"
         }
       ]
     },
@@ -92,7 +135,7 @@
           "assetId": 10458941,
           "decimals": 6,
           "recommended": true,
-          "settlementRail": "cctp"
+          "settlementRail": "allbridge"
         },
         {
           "id": "algo_native",

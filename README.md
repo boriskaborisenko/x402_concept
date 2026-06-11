@@ -1,213 +1,252 @@
 # Chain-Agnostic x402
 
-**Payment sidecar** для HTTP 402: отдельный модуль, который ставится **за** API любого сервиса (merchant). Пользователь платит из поддерживаемой сети → модуль верифицирует on-chain → **сразу** открывает доступ. Свод ликвидности в vault (CCTP / CCIP) идёт в фоне и не блокирует checkout.
+HTTP **402 Payment Required** sidecar: users pay from **any supported chain**, access unlocks **immediately** after on-chain verification, and liquidity is **aggregated to a vault** asynchronously (settlement does not block checkout).
 
-Концепт: [chain_agnostic_x402_concept.md](chain_agnostic_x402_concept.md)  
-Интеграция для merchant: [INTEGRATOR.md](INTEGRATOR.md)
+---
 
-## Что это за репозиторий
+## What problem this solves
+
+Typical crypto checkout forces the user onto one network and token. This project inverts that:
+
+- The **API** sets a price in USD.
+- The **user** pays from BSC, Algorand, Polygon testnet, etc.
+- The **sidecar** verifies the transaction and unlocks the resource.
+- The **merchant** receives consolidated funds on a chosen vault chain later.
 
 ```
-                    ┌─────────────────────┐
-  User / Wallet ──► │  frontend/ (demo)   │  опциональный reference UI
-                    └──────────┬──────────┘
-                               │ /api
-                    ┌──────────▼──────────┐
-  Merchant API ───► │  x402 payment module │  ← ключевая «приблуда»
-  (ваш сервер)      │  Node или Rust       │
-                    └──────────┬──────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              ▼                ▼                ▼
-         BSC / Algo       ledger            settlement
-         verify           (in-memory)       → vault
+User pays from anywhere  →  Service unlocks instantly  →  Merchant settles on vault chain
 ```
 
-| Часть | Роль |
-|-------|------|
-| **`config/`** | Единый конфиг **модуля**: сети, treasury, токены, vault, ресурсы, цены. Не живёт в merchant-backend. |
-| **`backend/`** | **Reference implementation** на Node — тот же HTTP API, что и Rust. Удобно для разработки и демо. |
-| **`x402-module/`** | **Целевой sidecar** на Rust — тот же контракт, для production/deploy. |
-| **`frontend/`** | Демо-checkout (connect → pay → unlock). Merchant может использовать свой UI и только API модуля. |
+---
 
-Node **не** «промежуточный сервер merchant'а». Это **вторая реализация payment-модуля**. Merchant поднимает **один** sidecar (Node **или** Rust), проксирует `/api/payments` (или весь `/api` модуля) и отдаёт свой контент после `resource_unlocked`.
+## Current stage (honest)
 
-### Node и Rust — не оба на :4000
+| Area | Status |
+|------|--------|
+| Payment intents + multi-chain routes | Working (testnet) |
+| On-chain verify + instant unlock (SSE) | Working |
+| Demo UI (`frontend/`) | Working |
+| Rust sidecar (`x402-module/`) | **Recommended** runtime |
+| Node sidecar (`backend/`) | Reference implementation, same API |
+| Ledger | In-memory (restart loses state) |
+| **BSC → BSC settlement** | **Working**: contract treasury → operator `sweepAll` → vault |
+| **Cross-chain settlement** (e.g. Algo → BSC vault) | **Not production-ready**; ledger stays `pending`; bridge worker is experimental |
+| CCTP / CCIP / Wormhole / Allbridge auto-rail | Not wired for your testnet checkout tokens |
+| Production hardening | See [ROADMAP.md](ROADMAP.md) |
 
-Это **не два сервиса, которые работают вместе**. Это **две замены друг другу** с одним и тем же API:
+**Testnet token reality:** checkout uses Circle testnet USDC on Algorand (ASA `10458941`) and a custom BSC test USDC (`0xBC745…`). Public bridges (Allbridge, Wormhole) target **mainnet** USDC addresses — they do not move those test tokens. Full cross-chain E2E on testnet is limited; **same-chain BSC settlement is the reference path that works today.**
 
-| Режим | Что запускать | Порт |
-|-------|----------------|------|
-| Разработка / демо | `backend` **или** `x402-module` | **один** процесс на `:4000` |
-| Сравнить Node vs Rust | оба, но на **разных** портах | Node `:4000`, Rust `:4001` |
-| Production | обычно только Rust sidecar | `:4000` (или за nginx) |
+---
 
-Два процесса **не могут** слушать один порт → `Address already in use (os error 48)` — ожидаемо, если Node уже на 4000 и ты запускаешь Rust туда же.
+## Architecture
 
-**Перед `cargo run`:** останови Node (`Ctrl+C` / `kill`), **или** `PORT=4001 cargo run` и направь фронт на нужный порт.
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│ User wallet │────►│  x402 sidecar    │────►│ Merchant API    │
+│ BSC / Algo  │     │  (Rust or Node)  │     │ (your service)  │
+└─────────────┘     └────────┬─────────┘     └─────────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+         Chain RPC      Ledger (RAM)   Settlement worker
+         verify tx      audit trail    sweep / bridge → vault
+```
 
-## Быстрый старт
+| Path | Role |
+|------|------|
+| [`config/`](config/) | Networks, treasuries, vault, resources, prices — **not** in merchant app code |
+| [`x402-module/`](x402-module/) | Production-oriented Rust sidecar |
+| [`backend/`](backend/) | Node reference, same HTTP API |
+| [`frontend/`](frontend/) | Optional demo checkout |
+| [`contracts/`](contracts/) | `X402Treasury.sol` — per-chain EVM payment collector |
+| [`bridge-worker/`](bridge-worker/) | Experimental Allbridge script (Algo → BSC); see limitations above |
 
-### Требования
+Run **one** sidecar process (Node **or** Rust), not both on the same port.
+
+---
+
+## Two layers: authorization vs settlement
+
+These are **intentionally separate**.
+
+### 1. Authorization (user-facing, fast)
+
+1. `POST /api/payment-intent` → HTTP 402 + payment routes (per chain/token).
+2. User sends USDC (or USDCa) to the **treasury** address in the chosen route.
+3. `POST /api/payments/submit` + SSE `GET /api/payments/:id/events`.
+4. Sidecar verifies tx on-chain → emits `resource_unlocked`.
+
+User does **not** wait for bridge or settlement.
+
+### 2. Settlement (background, merchant-facing)
+
+After verify, a ledger entry is created:
+
+| Scenario | Ledger | Worker behavior |
+|----------|--------|-----------------|
+| Pay on BSC, vault on BSC, **contract treasury** | `sweep_pending` → `settled` | Operator calls `sweepAll(USDC)`; gas paid by operator |
+| Pay on BSC, vault on BSC, EOA treasury | `pending` → `settled` | Auto-settle (proof = payment tx) |
+| Pay on Algo, vault on BSC | `pending` (cross-chain) | No automatic bridge with current test tokens |
+| `settlement.mode: mock` | fake `settled` | Demo only |
+
+**EVM treasury model (production):** deploy [`X402Treasury`](contracts/src/X402Treasury.sol) on each EVM chain. Users pay the **contract**. A **sponsor operator** (hot wallet with BNB/ETH) calls `sweepAll`; the contract holds USDC, not native gas. See [docs/DEPLOY_BSC_TREASURY.md](docs/DEPLOY_BSC_TREASURY.md).
+
+---
+
+## Quick start
+
+### Requirements
 
 - Node.js 18+
-- Rust 1.75+ (опционально)
-- Testnet: BSC (BNB + USDC) и/или Algorand (**ALGO** на комиссии + **USDCa** ASA `10458941` на оплату)
+- Rust 1.75+ (for `x402-module`)
+- Testnet wallets: BSC (BNB + USDC), Algorand (ALGO + USDCa ASA `10458941`)
 
-### 1. Конфиг модуля
+### 1. Config
 
 ```bash
 cp config/config.example.json config/config.json
-# treasury, networks, resources — см. config/
+# Edit treasuries, vault, resources
 ```
 
-Оба runtime читают **`config/config.json`** (или путь из `X402_CONFIG`).
+Both runtimes read `config/config.json` (or `X402_CONFIG`).
 
-### 2. Payment module — выбери **один** runtime
+### 2. Sidecar env (Rust, contract treasury sweep)
+
+```bash
+cp x402-module/.env.example x402-module/.env
+# SWEEP_OPERATOR_PRIVATE_KEY = operator EOA with testnet BNB
+```
+
+### 3. Run sidecar (pick one)
+
+**Rust (recommended):**
+
+```bash
+cd x402-module
+cargo run --release
+# http://localhost:4000
+```
 
 **Node (reference):**
 
 ```bash
-cd backend
-npm install
-npm start    # :4000 — не запускай Rust на том же порту
+cd backend && npm install && npm start
+# http://localhost:4000 — do not run Rust on the same port
 ```
-
-**Rust (sidecar):** см. шаг 4 — сначала останови Node, если он уже на `:4000`.
-
-API модуля: `http://localhost:4000` (какой бы runtime ни был запущен).
-
-### 3. Demo UI (опционально)
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-UI: `http://localhost:3000` (прокси `/api` → `:4000`).  
-`?debug=1` — показать payment intent JSON.
-
-### 4. Payment module — Rust
-
-**`--release` не обязателен**, но рекомендуется для реального запуска:
-
-| Команда | Когда |
-|---------|--------|
-| `cargo run` | Локальная разработка: быстрая сборка, медленнее runtime, больше бинарник |
-| `cargo run --release` | Демо / staging / production: оптимизированный бинарник, дольше первая сборка |
-| `cargo build --release` + `./target/release/x402-module` | То же, без пересборки при каждом старте |
-
-```bash
-cd x402-module
-cargo run              # dev
-cargo run --release    # recommended для «как в проде»
-```
-
-Переменные:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | HTTP port |
-| `X402_CONFIG` | `../config/config.json` | Путь к конфигу модуля |
+| `X402_CONFIG` | `../config/config.json` | Config path |
+| `SWEEP_OPERATOR_PRIVATE_KEY` | — | Operator for `sweepAll` on contract treasuries |
 
-## Поток оплаты
+### 4. Demo UI (optional)
 
+```bash
+cd frontend && npm install && npm run dev
+# http://localhost:3000  (proxies /api → :4000)
+# ?debug=1 — settlement debug panel
 ```
-POST /api/payment-intent     →  HTTP 402 + routes
-On-chain payment
-POST /api/payments/submit    →  202, сервер поллит chain
-GET  /api/payments/:id/events → SSE → resource_unlocked
-[background] settlement worker → vault (mock CCTP/CCIP)
-```
 
-**Authorization** (unlock сразу) и **settlement** (async vault) разделены.
+### 5. Deploy BSC contract treasury (testnet)
 
-## Конфигурация (`config/`)
+See [docs/DEPLOY_BSC_TREASURY.md](docs/DEPLOY_BSC_TREASURY.md). Summary:
 
-| Файл | Назначение |
-|------|------------|
-| `config/config.json` | Рабочий конфиг модуля |
-| `config/config.example.json` | Шаблон |
-| `config/config.schema.json` | JSON Schema v1 |
+- Deploy `X402Treasury(vault, operator)` on BSC testnet (Remix or Foundry).
+- Set `networks[].treasury.type` = `"Contract"` and the deployed address in `config.json`.
+- Fund **operator** with testnet BNB (not the treasury contract).
 
-| Секция | Назначение |
-|--------|------------|
-| `networks[]` | Сети и токены оплаты |
-| `networks[].treasury` | Куда пользователь шлёт платёж |
-| `settlement.vault` | Куда сводится ликвидность после bridge |
-| `rates` | USD → crypto (demo) |
-| `resources` | Платные ресурсы и цены |
+---
 
-Node перечитывает конфиг при изменении файла (без рестарта). Rust — перезапуск процесса.
+## Configuration (`config/`)
 
-USDC BSC testnet `0xBC745…` — **18 decimals** (проверено on-chain).
+| File | Purpose |
+|------|---------|
+| `config.json` | Active config (treasury addresses, vault, resources) |
+| `config.example.json` | Template |
+| `config.schema.json` | JSON Schema |
 
-## API v1
+| Section | Purpose |
+|---------|---------|
+| `networks[]` | Enabled chains, RPC, **treasury**, payment tokens |
+| `settlement.vault` | Where liquidity should end up |
+| `settlement.targetNetworkId` | Vault chain (e.g. `bsc`) |
+| `settlement.mode` | `testnet_hybrid` or `mock` |
+| `resources[]` | Sellable items and USD prices |
+| `rates` | Demo USD → crypto conversion |
+
+**BSC testnet USDC** in this repo: `0xBC745DB6F5E07f8F9f3E461b9850195e85EDb07f` (**18 decimals**).
+
+**Algorand testnet USDC:** ASA `10458941` (6 decimals). Mainnet USDC is ASA `31566704`.
+
+---
+
+## API (v1)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/resources` | Resources |
-| GET | `/api/networks` | Networks + tokens |
-| GET | `/api/config` | Networks + legacy `chains` |
+| GET | `/api/resources` | List resources |
+| GET | `/api/networks` | Networks + treasuries + tokens |
 | POST | `/api/payment-intent` | Create intent (402) |
-| POST | `/api/payments/submit` | Submit tx (`202`) |
-| GET | `/api/payments/:intentId/events` | SSE |
-| POST | `/api/verify-payment` | Sync verify (legacy) |
-| GET | `/api/ledger` | Ledger (ops) |
-| POST | `/api/settle` | Manual settlement |
+| POST | `/api/payments/submit` | Submit tx hash (`202`) |
+| GET | `/api/payments/:id/events` | SSE: `resource_unlocked` |
+| GET | `/api/ledger` | Internal ledger |
+| GET | `/admin/balances` | Treasury/vault balances (admin) |
+| GET | `/admin/settlement/queue` | Pending settlement (admin) |
+| POST | `/admin/settlement/sweep` | Manual sweep (contract treasury) |
+| POST | `/admin/settlement/confirm` | Cross-chain payout proof (manual) |
 
-Подробнее: [INTEGRATOR.md](INTEGRATOR.md).
+Admin: header `X-Merchant-Admin: 1` or `Authorization: Bearer $ADMIN_TOKEN`.
 
-## Структура репозитория
+Merchant integration: [INTEGRATOR.md](INTEGRATOR.md).
+
+---
+
+## Repository layout
 
 ```
-config/                 # конфиг payment-модуля (сети, treasury, vault, resources)
-backend/                # Node reference implementation
-x402-module/            # Rust sidecar (тот же API)
-frontend/               # optional demo checkout UI
-docker-compose.yml
-INTEGRATOR.md
+config/              Module config (chains, treasury, vault, resources)
+x402-module/         Rust sidecar (primary)
+backend/             Node reference sidecar
+frontend/            Demo checkout UI
+contracts/           X402Treasury.sol + Foundry deploy
+bridge-worker/       Experimental Algo→BSC bridge script
+docs/                Settlement, deploy, bridge guides
+scripts/             deploy-bsc-treasury.sh, settlement-demo.sh
 ```
+
+---
+
+## Further reading
+
+| Doc | Topic |
+|-----|--------|
+| [INTEGRATOR.md](INTEGRATOR.md) | Merchant HTTP integration |
+| [ROADMAP.md](ROADMAP.md) | Production blockers |
+| [docs/SETTLEMENT_TESTNET.md](docs/SETTLEMENT_TESTNET.md) | Settlement modes and admin API |
+| [docs/DEPLOY_BSC_TREASURY.md](docs/DEPLOY_BSC_TREASURY.md) | Contract treasury on BSC testnet |
+| [docs/BRIDGE_ALGO_BSC.md](docs/BRIDGE_ALGO_BSC.md) | Bridge experiment + token mismatch |
+| [chain_agnostic_x402_concept.md](chain_agnostic_x402_concept.md) | Product concept |
+
+---
 
 ## Docker
 
-Для **сравнения** реализаций в compose разные порты снаружи:
-
 ```bash
-docker compose up x402-node     # :4000
-docker compose up x402-rust     # :4001  (внутри контейнера тоже 4000, снаружи 4001)
+docker compose up x402-node    # host :4000
+docker compose up x402-rust    # host :4001
 ```
 
-В бою поднимают **один** сервис, не оба. Volume: `./config/config.json`.
+Use **one** service in production. Mount `./config/config.json`.
+
+---
 
 ## Troubleshooting
 
-### `Address already in use (os error 48)` при `cargo run`
+**Port 4000 in use** — stop the other sidecar or `PORT=4001 cargo run` and point the frontend proxy at it.
 
-На порту **4000** уже что-то слушает — чаще всего **Node** (`cd backend && npm start`) или предыдущий `x402-module`.
+**Sweep never runs** — `treasury.type` must be `Contract`, `SWEEP_OPERATOR_PRIVATE_KEY` set, operator funded with BNB.
 
-**Вариант A** — только Rust на 4000:
+**Algorand underflow** — insufficient USDCa (`10458941`) or ALGO for fees; fund via [Circle testnet faucet](https://faucet.circle.com/).
 
-```bash
-# узнать, кто держит порт
-lsof -i:4000
-# остановить (подставь PID из вывода)
-kill <PID>
-cd x402-module && cargo run
-```
-
-**Вариант B** — Node и Rust параллельно:
-
-```bash
-# Node оставить на 4000, Rust на 4001
-cd x402-module && PORT=4001 cargo run
-```
-
-Фронт по умолчанию проксирует на `:4000` — для Rust на 4001 поменяй `proxy` в `frontend/vite.config.ts` или останови Node.
-
-### Algorand: `underflow on subtracting … from sender amount …`
-
-Кошелёк пытается отправить больше USDCa, чем есть на балансе. Пример: ресурс **$0.25** → `250000` micro-USDCa (6 decimals); если в кошельке `16000` micro = **0.016 USDCa**, транзакция отклонится до подписи (после обновления фронта — с понятным текстом).
-
-**Что сделать:** пополнить testnet USDCa (ASA `10458941`) и оставить ~0.1 ALGO на fee; или выбрать более дешёвый ресурс для проверки.
+**Paid on Algo, vault on BSC empty** — expected on testnet until a mainnet-compatible bridge rail is integrated or you confirm settlement manually.

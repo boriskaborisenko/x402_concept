@@ -8,10 +8,11 @@ import {
   waitForPaymentUnlock
 } from './api/client'
 import { CheckoutSuccess } from './components/CheckoutSuccess'
+import { SettlementDebug } from './components/SettlementDebug'
 import { WalletConnectPanel } from './components/WalletConnectPanel'
 import { usePaymentWallet } from './hooks/usePaymentWallet'
 import { payAlgorandUsdca } from './lib/payments/algorand'
-import { payBscUsdc } from './lib/payments/bsc'
+import { payEvmUsdc } from './lib/payments/evm'
 import { buildExplorerUrl } from './lib/explorer'
 import { normalizePaymentRoute } from './lib/payments/routeAmount'
 import type {
@@ -107,11 +108,11 @@ export default function App() {
       setStatusMessage('Confirm the transaction in your wallet…')
 
       let hash: string
-      if (chain === 'bsc') {
+      if (chain === 'bsc' || chain === 'polygon-amoy') {
         if (!evmAccount.address) {
           throw new Error('EVM wallet is not connected.')
         }
-        hash = await payBscUsdc(route, evmAccount.chainId, writeContractAsync, switchChainAsync)
+        hash = await payEvmUsdc(route, evmAccount.chainId, writeContractAsync, switchChainAsync)
       } else {
         if (!activeAddress) {
           throw new Error('Algorand wallet is not connected.')
@@ -219,6 +220,8 @@ export default function App() {
         {statusMessage && <p className="status-line">{statusMessage}</p>}
         {error && <p className="error">{error}</p>}
       </section>
+
+      {debug && <SettlementDebug />}
 
       {debug && intent && (
         <section className="panel">

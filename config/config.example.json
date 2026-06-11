@@ -15,12 +15,18 @@
   },
   "settlement": {
     "targetNetworkId": "bsc",
+    "mode": "testnet_hybrid",
     "vault": {
       "networkId": "bsc",
-      "address": "0xYOUR_VAULT_ADDRESS",
+      "address": "0xYOUR_VAULT_COLD_WALLET",
       "type": "EOA",
-      "note": "Single treasury after CCTP/CCIP aggregation (step 2)"
-    }
+      "note": "Funds aggregate here — set targetNetworkId to bsc | base-sepolia | algorand | ..."
+    },
+    "sponsor": {
+      "mode": "relayer",
+      "note": "Operator pays sweep gas; set SWEEP_OPERATOR_PRIVATE_KEY on sidecar"
+    },
+    "batch": { "minUsd": "1.00", "intervalSec": 300 }
   },
   "rates": {
     "BNB": 600,
@@ -40,8 +46,13 @@
       "explorerUrl": "https://testnet.bscscan.com/tx/",
       "facilitator": null,
       "treasury": {
-        "address": "0xYOUR_TREASURY_EOA_OR_CONTRACT",
-        "type": "EOA"
+        "address": "0xYOUR_TREASURY_CONTRACT",
+        "type": "Contract",
+        "contract": {
+          "name": "X402Treasury",
+          "version": "1",
+          "sweepOperator": "0xYOUR_RELAYER_EOA"
+        }
       },
       "native": { "symbol": "BNB", "decimals": 18 },
       "paymentTokens": [

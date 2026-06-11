@@ -1,5 +1,8 @@
 use crate::adapters::{algo, evm};
-use crate::config::{get_network_by_id, get_rate, AppConfig, Network};
+use crate::config::{
+    get_network_by_id, get_rate, is_evm_contract_treasury, settlement_mode, settlement_target,
+    AppConfig, Network,
+};
 use crate::state::{Intent, LedgerEntry, PaymentRoute, StateData};
 use chrono::{Duration, Utc};
 use serde_json::{json, Value};
@@ -157,6 +160,13 @@ pub async fn verify_route_payment(
     }
 
     let unlocked_at = Utc::now().to_rfc3339();
+    let (target_network_id, vault_address) = settlement_target(config)
+        .map(|(t, v)| (t, v.address))
+        .unwrap_or_else(|| (route.chain.clone(), route.recipient.clone()));
+
+    let (settlement_status, settlement_details) =
+        initial_settlement_status(config, network, &route.chain, &target_network_id);
+
     let entry = LedgerEntry {
         payment_intent_id: intent_id.to_string(),
         request_hash: intent.request_hash.clone(),
@@ -166,8 +176,15 @@ pub async fn verify_route_payment(
         payment_source_tx: tx_hash.to_string(),
         amount_usd: intent.price_in_usd.clone(),
         crypto_amount: route.amount.clone(),
+        treasury_address: route.recipient.clone(),
+        treasury_type: network.treasury.treasury_type.clone(),
+        target_network_id,
+        vault_address,
         settlement_rail: route.settlement_rail.clone().unwrap_or_else(|| "manual".into()),
-        settlement_status: "pending".into(),
+        settlement_status,
+        settlement_proof_tx: None,
+        settled_at: None,
+        settlement_details,
         unlocked_at: unlocked_at.clone(),
     };
     state.ledger.push(entry);
@@ -239,6 +256,38 @@ async fn verify_on_network(network: &Network, route: &PaymentRoute, tx_hash: &st
             confirmations: None,
         },
     }
+}
+
+fn initial_settlement_status(
+    config: &AppConfig,
+    network: &Network,
+    source_chain: &str,
+    target_network_id: &str,
+) -> (String, Option<String>) {
+    if settlement_mode(config) == "mock" {
+        return ("pending".into(), Some("mock mode".into()));
+    }
+
+    if source_chain != target_network_id {
+        return (
+            "pending".into(),
+            Some(format!(
+                "cross_chain: awaiting payout proof on {target_network_id} vault"
+            )),
+        );
+    }
+
+    if is_evm_contract_treasury(network) {
+        return (
+            "sweep_pending".into(),
+            Some("same_chain contract treasury: awaiting relayer sweep".into()),
+        );
+    }
+
+    (
+        "pending".into(),
+        Some("same_chain EOA: auto-settle on worker tick".into()),
+    )
 }
 
 pub enum VerifyOutcome {

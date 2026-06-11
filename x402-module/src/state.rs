@@ -75,8 +75,18 @@ pub struct LedgerEntry {
     pub payment_source_tx: String,
     pub amount_usd: String,
     pub crypto_amount: String,
+    pub treasury_address: String,
+    pub treasury_type: String,
+    pub target_network_id: String,
+    pub vault_address: String,
     pub settlement_rail: String,
     pub settlement_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_proof_tx: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settled_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_details: Option<String>,
     pub unlocked_at: String,
 }
 

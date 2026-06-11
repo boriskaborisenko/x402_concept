@@ -224,3 +224,34 @@ fn fail(reason: impl Into<String>) -> VerifyResult {
         pending: false,
     }
 }
+
+pub async fn asa_balance(
+    algod_url: &str,
+    indexer_url: Option<&str>,
+    address: &str,
+    asset_id: u64,
+    decimals: u32,
+) -> Option<String> {
+    let client = reqwest::Client::new();
+    let idx = indexer_url.unwrap_or(algod_url);
+    let url = format!("{idx}/v2/accounts/{address}");
+    let account = client.get(&url).send().await.ok()?.json::<serde_json::Value>().await.ok()?;
+    let assets = account
+        .pointer("/account/assets")
+        .and_then(|a| a.as_array())?;
+
+    for asset in assets {
+        if asset.get("asset-id").and_then(|v| v.as_u64()) == Some(asset_id) {
+            let amount = asset.get("amount").and_then(|v| v.as_u64()).unwrap_or(0);
+            return Some(format_asa_amount(amount, decimals));
+        }
+    }
+    Some(format_asa_amount(0, decimals))
+}
+
+fn format_asa_amount(amount: u64, decimals: u32) -> String {
+    let scale = 10u64.pow(decimals);
+    let whole = amount / scale;
+    let frac = amount % scale;
+    format!("{whole}.{frac:0width$}", width = decimals as usize)
+}

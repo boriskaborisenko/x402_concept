@@ -18,10 +18,9 @@ export function buildExplorerUrl(
   if (!txHash) return null
 
   if (chain === 'algorand') {
-    // Always Lora — config may be stale in the tab or still point at Pera.
     return algorandExplorerTxUrl(txHash, 'testnet')
   }
 
-  const base = appConfig?.chains.bsc.explorerUrl
+  const base = appConfig?.chains[chain]?.explorerUrl
   return base ? `${base}${txHash}` : null
 }

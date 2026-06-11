@@ -7,7 +7,7 @@ export interface Resource {
 
 export interface PaymentRoute {
   id: string
-  chain: 'bsc' | 'algorand'
+  chain: string
   asset: string
   amount: string
   decimals: number
@@ -49,10 +49,7 @@ export interface ChainConfig {
 }
 
 export interface AppConfig {
-  chains: {
-    bsc: ChainConfig
-    algorand: ChainConfig
-  }
+  chains: Record<string, ChainConfig>
 }
 
 export interface ResourceContent {
@@ -82,6 +79,6 @@ export type PaymentEvent =
   | { type: 'resource_unlocked'; resourceContent: ResourceContent }
   | { type: 'payment_failed'; reason: string }
 
-export type ActiveChain = 'bsc' | 'algorand'
+export type ActiveChain = 'bsc' | 'algorand' | 'polygon-amoy' | string
 
 export type CheckoutPhase = 'idle' | 'confirming' | 'success' | 'failed'

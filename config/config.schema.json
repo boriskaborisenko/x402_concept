@@ -32,6 +32,21 @@
       "type": "object",
       "properties": {
         "targetNetworkId": { "type": "string" },
+        "mode": { "type": "string", "enum": ["mock", "testnet_hybrid"] },
+        "sponsor": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string" },
+            "note": { "type": "string" }
+          }
+        },
+        "batch": {
+          "type": "object",
+          "properties": {
+            "minUsd": { "type": "string" },
+            "intervalSec": { "type": "integer" }
+          }
+        },
         "vault": {
           "type": "object",
           "required": ["networkId", "address", "type"],
@@ -76,7 +91,15 @@
             "required": ["address", "type"],
             "properties": {
               "address": { "type": "string" },
-              "type": { "type": "string" }
+              "type": { "type": "string", "enum": ["EOA", "Contract", "Multisig"] },
+              "contract": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "version": { "type": "string" },
+                  "sweepOperator": { "type": "string" }
+                }
+              }
             }
           },
           "native": {
@@ -100,7 +123,7 @@
                 "decimals": { "type": "integer" },
                 "native": { "type": "boolean" },
                 "recommended": { "type": "boolean" },
-                "settlementRail": { "type": "string", "enum": ["cctp", "ccip", "manual"] }
+                "settlementRail": { "type": "string", "enum": ["cctp", "ccip", "allbridge", "wormhole", "manual"] }
               }
             }
           }

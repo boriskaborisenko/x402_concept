@@ -1,4 +1,5 @@
 mod adapters;
+mod admin;
 mod authorization;
 mod config;
 mod payment_watcher;
@@ -18,6 +19,8 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let _ = dotenvy::dotenv();
+
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("x402_module=info".parse()?))
         .init();
@@ -42,7 +45,9 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(4000);
 
-    let app = router(ctx).layer(CorsLayer::permissive());
+    let app = router(ctx.clone())
+        .merge(admin::router(ctx))
+        .layer(CorsLayer::permissive());
     let bind_addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&bind_addr).await.map_err(|err| {
         anyhow::anyhow!(

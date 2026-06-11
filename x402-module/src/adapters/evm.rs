@@ -168,3 +168,154 @@ fn fail(reason: &str) -> VerifyResult {
         confirmations: None,
     }
 }
+
+/// Verify a settlement payout: ERC20 transfer to vault on target chain.
+pub async fn verify_payout_to_vault(
+    rpc_url: &str,
+    tx_hash: &str,
+    vault_address: &str,
+    expected_asset: &str,
+    expected_amount: &str,
+    token_address: Option<&str>,
+    native_symbol: &str,
+    native_decimals: u32,
+    token_decimals: u32,
+) -> VerifyResult {
+    verify_evm_tx(
+        rpc_url,
+        tx_hash,
+        vault_address,
+        expected_asset,
+        expected_amount,
+        token_address,
+        native_symbol,
+        native_decimals,
+        token_decimals,
+    )
+    .await
+}
+
+/// Verify sweep tx moved tokens from treasury contract to vault (Transfer log).
+pub async fn verify_sweep_to_vault(
+    rpc_url: &str,
+    tx_hash: &str,
+    treasury_address: &str,
+    vault_address: &str,
+    token_address: &str,
+    min_amount: &str,
+    token_decimals: u32,
+) -> VerifyResult {
+    let client = reqwest::Client::new();
+    let receipt: Option<serde_json::Value> =
+        rpc_call(&client, rpc_url, "eth_getTransactionReceipt", json!([tx_hash]))
+            .await
+            .ok()
+            .and_then(|v| v.get("result").cloned())
+            .filter(|v| !v.is_null());
+
+    let Some(receipt) = receipt else {
+        return VerifyResult {
+            success: false,
+            reason: Some("Sweep transaction not found or pending.".into()),
+            pending: true,
+            confirmations: None,
+        };
+    };
+
+    if receipt.get("status").and_then(|s| s.as_str()) != Some("0x1") {
+        return fail("Sweep transaction failed on-chain.");
+    }
+
+    let min_units = amount_to_units(min_amount, token_decimals);
+    let transfer_topic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+    let logs = receipt.get("logs").and_then(|l| l.as_array());
+
+    let Some(logs) = logs else {
+        return fail("No logs in sweep receipt.");
+    };
+
+    for log in logs {
+        let topics = log.get("topics").and_then(|t| t.as_array());
+        let log_token = log.get("address").and_then(|a| a.as_str()).unwrap_or_default();
+        if !eq_addr(log_token, token_address) {
+            continue;
+        }
+        let Some(topics) = topics else { continue };
+        if topics.len() < 3 {
+            continue;
+        }
+        if topics[0].as_str() != Some(transfer_topic) {
+            continue;
+        }
+        let from = topic_to_address(topics[1].as_str().unwrap_or_default());
+        let to = topic_to_address(topics[2].as_str().unwrap_or_default());
+        if !eq_addr(&from, treasury_address) || !eq_addr(&to, vault_address) {
+            continue;
+        }
+        let data = log.get("data").and_then(|d| d.as_str()).unwrap_or("0x0");
+        let amount = parse_hex_u128(data);
+        if amount >= min_units {
+            return VerifyResult {
+                success: true,
+                reason: None,
+                pending: false,
+                confirmations: Some(1),
+            };
+        }
+    }
+
+    fail("No matching treasury→vault Transfer log in sweep tx.")
+}
+
+pub async fn erc20_balance_raw(rpc_url: &str, token: &str, holder: &str) -> Option<u128> {
+    let client = reqwest::Client::new();
+    let holder_clean = holder.trim_start_matches("0x");
+    let data = format!("0x70a08231000000000000000000000000{holder_clean}");
+    rpc_call(
+        &client,
+        rpc_url,
+        "eth_call",
+        json!([{ "to": token, "data": data }, "latest"]),
+    )
+    .await
+    .ok()
+    .and_then(|v| v.get("result").and_then(|s| s.as_str()).map(parse_hex_u128))
+}
+
+pub async fn erc20_balance_of(rpc_url: &str, token: &str, holder: &str) -> Option<String> {
+    let client = reqwest::Client::new();
+    let holder_clean = holder.trim_start_matches("0x");
+    let data = format!(
+        "0x70a08231000000000000000000000000{holder_clean}"
+    );
+    let result = rpc_call(
+        &client,
+        rpc_url,
+        "eth_call",
+        json!([{ "to": token, "data": data }, "latest"]),
+    )
+    .await
+    .ok()
+    .and_then(|v| v.get("result").and_then(|s| s.as_str()).map(parse_hex_u128))?;
+
+    Some(format_units(result, 18))
+}
+
+fn topic_to_address(topic: &str) -> String {
+    let hex = topic.trim_start_matches("0x");
+    if hex.len() < 40 {
+        return format!("0x{hex}");
+    }
+    format!("0x{}", &hex[hex.len() - 40..])
+}
+
+fn format_units(value: u128, decimals: u32) -> String {
+    let scale = 10u128.pow(decimals);
+    let whole = value / scale;
+    let frac = value % scale;
+    if decimals <= 6 {
+        format!("{whole}.{frac:0width$}", width = decimals as usize)
+    } else {
+        format!("{:.6}", whole as f64 + frac as f64 / scale as f64)
+    }
+}
