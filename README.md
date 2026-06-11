@@ -33,7 +33,7 @@ User pays from anywhere  →  Service unlocks instantly  →  Merchant settles o
 
 ---
 
-## Current stage (honest)
+## Current stage 
 
 **Scope:** validate the idea on **testnets**, not ship a payment product.
 
