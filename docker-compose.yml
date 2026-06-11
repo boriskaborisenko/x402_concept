@@ -1,0 +1,33 @@
+services:
+  x402-node:
+    build:
+      context: .
+      target: node-module
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config/config.json:/app/config/config.json:ro
+    environment:
+      X402_CONFIG: /app/config/config.json
+
+  x402-rust:
+    build:
+      context: .
+      target: rust-module
+    ports:
+      - "4001:4000"
+    volumes:
+      - ./config/config.json:/app/config/config.json:ro
+    environment:
+      X402_CONFIG: /app/config/config.json
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - x402-node

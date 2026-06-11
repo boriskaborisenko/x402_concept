@@ -1,19 +1,40 @@
+# Dependencies & build output
 node_modules/
 dist/
 build/
 .next/
-.env
-.env.local
-.DS_Store
-.ai/out/
-coverage/
-*.log
+.vite/
+*.tsbuildinfo
 
 frontend/node_modules/
 frontend/dist/
 backend/node_modules/
 backend/dist/
 
-package-lock.json
-pnpm-lock.yaml
-yarn.lock
+# Rust / Cargo (debug + release build artifacts)
+target/
+**/*.rs.bk
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+
+# Local config overrides (treasury keys, custom RPC, etc.)
+config/config.local.json
+**/config.local.json
+
+# OS & editors
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+
+# Logs & coverage
+*.log
+coverage/
+.ai/out/
+
+# Cursor (local workspace state)
+.cursor/

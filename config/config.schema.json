@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://x402.local/config.schema.v1.json",
+  "title": "x402 Payment Module Config v1",
+  "type": "object",
+  "required": ["version", "merchants", "networks", "resources"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "merchants": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id", "name", "settlement"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "settlement": {
+            "type": "object",
+            "required": ["networkId", "asset"],
+            "properties": {
+              "networkId": { "type": "string" },
+              "asset": { "type": "string" },
+              "address": { "type": "string" },
+              "frequency": { "type": "string" },
+              "minimum_payout": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "settlement": {
+      "type": "object",
+      "properties": {
+        "targetNetworkId": { "type": "string" },
+        "vault": {
+          "type": "object",
+          "required": ["networkId", "address", "type"],
+          "properties": {
+            "networkId": { "type": "string" },
+            "address": { "type": "string" },
+            "type": { "type": "string", "enum": ["EOA", "Contract", "Multisig"] },
+            "note": { "type": "string" }
+          }
+        }
+      }
+    },
+    "rates": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "networks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "type", "treasury", "native", "paymentTokens"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["evm", "algo", "l2"] },
+          "enabled": { "type": "boolean" },
+          "chainId": { "type": "integer" },
+          "rpcUrl": { "type": "string" },
+          "explorerUrl": { "type": "string" },
+          "genesisId": { "type": "string" },
+          "facilitator": {
+            "type": ["object", "null"],
+            "properties": {
+              "type": { "type": "string" },
+              "url": { "type": "string" },
+              "indexerUrl": { "type": "string" }
+            }
+          },
+          "treasury": {
+            "type": "object",
+            "required": ["address", "type"],
+            "properties": {
+              "address": { "type": "string" },
+              "type": { "type": "string" }
+            }
+          },
+          "native": {
+            "type": "object",
+            "required": ["symbol", "decimals"],
+            "properties": {
+              "symbol": { "type": "string" },
+              "decimals": { "type": "integer" }
+            }
+          },
+          "paymentTokens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "symbol", "decimals"],
+              "properties": {
+                "id": { "type": "string" },
+                "symbol": { "type": "string" },
+                "address": { "type": "string" },
+                "assetId": { "type": "integer" },
+                "decimals": { "type": "integer" },
+                "native": { "type": "boolean" },
+                "recommended": { "type": "boolean" },
+                "settlementRail": { "type": "string", "enum": ["cctp", "ccip", "manual"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "priceInUsd", "description"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "priceInUsd": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

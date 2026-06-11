@@ -1,25 +1,37 @@
 {
-  "name": "x402easy-frontend",
-  "version": "0.1.0",
+  "name": "x402-chain-agnostic-frontend",
   "private": true,
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "dev": "vite",
+    "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@perawallet/connect": "^1.4.2",
-    "@tanstack/react-query": "^5.64.2",
-    "@walletconnect/ethereum-provider": "^2.17.0",
-    "algosdk": "^3.2.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "viem": "^2.23.2",
-    "wagmi": "^2.14.7"
+    "@blockshake/defly-connect": "^1.2.1",
+    "@perawallet/connect": "^1.5.2",
+    "@reown/appkit": "^1.0.8",
+    "@reown/appkit-adapter-wagmi": "^1.0.8",
+    "@tanstack/react-query": "^5.50.0",
+    "@txnlab/use-wallet": "^4.6.0",
+    "@txnlab/use-wallet-react": "^4.6.0",
+    "@walletconnect/modal": "^2.7.0",
+    "@walletconnect/sign-client": "^2.23.9",
+    "algosdk": "^3.5.2",
+    "buffer": "^6.0.3",
+    "lucide-react": "^0.359.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "viem": "^2.17.0",
+    "wagmi": "^2.12.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.7"
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0",
+    "vite-plugin-node-polyfills": "^0.28.0"
   }
 }

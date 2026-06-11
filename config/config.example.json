@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "merchants": {
+    "m_001": {
+      "id": "m_001",
+      "name": "Your Merchant Name",
+      "settlement": {
+        "networkId": "bsc",
+        "asset": "USDC",
+        "address": "0xYOUR_SETTLEMENT_ADDRESS",
+        "frequency": "daily",
+        "minimum_payout": "10.00"
+      }
+    }
+  },
+  "settlement": {
+    "targetNetworkId": "bsc",
+    "vault": {
+      "networkId": "bsc",
+      "address": "0xYOUR_VAULT_ADDRESS",
+      "type": "EOA",
+      "note": "Single treasury after CCTP/CCIP aggregation (step 2)"
+    }
+  },
+  "rates": {
+    "BNB": 600,
+    "ALGO": 0.2,
+    "USDC": 1,
+    "USDCa": 1,
+    "USDT": 1
+  },
+  "networks": [
+    {
+      "id": "bsc",
+      "name": "BSC Testnet",
+      "type": "evm",
+      "enabled": true,
+      "chainId": 97,
+      "rpcUrl": "https://bsc-testnet-rpc.publicnode.com",
+      "explorerUrl": "https://testnet.bscscan.com/tx/",
+      "facilitator": null,
+      "treasury": {
+        "address": "0xYOUR_TREASURY_EOA_OR_CONTRACT",
+        "type": "EOA"
+      },
+      "native": { "symbol": "BNB", "decimals": 18 },
+      "paymentTokens": [
+        {
+          "id": "bsc_usdc",
+          "symbol": "USDC",
+          "address": "0xTOKEN_CONTRACT",
+          "decimals": 18,
+          "recommended": true,
+          "settlementRail": "cctp"
+        }
+      ]
+    },
+    {
+      "id": "algorand",
+      "name": "Algorand Testnet",
+      "type": "algo",
+      "enabled": true,
+      "explorerUrl": "https://lora.algokit.io/testnet/transaction/",
+      "facilitator": {
+        "type": "algod",
+        "url": "https://testnet-api.algonode.cloud",
+        "indexerUrl": "https://testnet-idx.algonode.cloud"
+      },
+      "treasury": {
+        "address": "ALGORAND_TREASURY_ADDRESS",
+        "type": "EOA"
+      },
+      "native": { "symbol": "ALGO", "decimals": 6 },
+      "paymentTokens": [
+        {
+          "id": "algo_usdca",
+          "symbol": "USDCa",
+          "assetId": 10458941,
+          "decimals": 6,
+          "recommended": true,
+          "settlementRail": "cctp"
+        }
+      ]
+    },
+    {
+      "id": "base-sepolia",
+      "name": "Base Sepolia",
+      "type": "l2",
+      "enabled": false,
+      "chainId": 84532,
+      "rpcUrl": "https://sepolia.base.org",
+      "explorerUrl": "https://sepolia.basescan.org/tx/",
+      "facilitator": null,
+      "treasury": {
+        "address": "0xYOUR_L2_TREASURY",
+        "type": "Contract"
+      },
+      "native": { "symbol": "ETH", "decimals": 18 },
+      "paymentTokens": [
+        {
+          "id": "base_usdc",
+          "symbol": "USDC",
+          "address": "0xUSDC_ON_BASE",
+          "decimals": 6,
+          "recommended": true,
+          "settlementRail": "cctp"
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "premium_advice",
+      "name": "Premium AI Agent Advice",
+      "priceInUsd": "0.25",
+      "description": "Example paid HTTP resource"
+    }
+  ]
+}
