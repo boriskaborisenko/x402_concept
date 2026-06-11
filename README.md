@@ -1,6 +1,10 @@
 # Chain-Agnostic x402
 
-HTTP **402 Payment Required** sidecar: users pay from **any supported chain**, access unlocks **immediately** after on-chain verification, and liquidity is **aggregated to a vault** asynchronously (settlement does not block checkout).
+> **Test / proof-of-concept only — not production-ready.**
+>
+> This repository is a **sandbox** for exploring chain-agnostic [x402](https://www.x402.org/) checkout: testnet wallets, in-memory ledger, experimental settlement paths, and demo UI. Do **not** use it for real money, mainnet traffic, or merchant production without a full security and ops review. See [ROADMAP.md](ROADMAP.md) for what is missing.
+
+HTTP **402 Payment Required** sidecar (concept): users pay from **any supported chain**, access unlocks **immediately** after on-chain verification, and liquidity is **aggregated to a vault** asynchronously (settlement does not block checkout).
 
 ---
 
@@ -21,18 +25,20 @@ User pays from anywhere  →  Service unlocks instantly  →  Merchant settles o
 
 ## Current stage (honest)
 
+**Scope:** validate the idea on **testnets**, not ship a payment product.
+
 | Area | Status |
 |------|--------|
-| Payment intents + multi-chain routes | Working (testnet) |
-| On-chain verify + instant unlock (SSE) | Working |
-| Demo UI (`frontend/`) | Working |
-| Rust sidecar (`x402-module/`) | **Recommended** runtime |
+| Payment intents + multi-chain routes | Demo — testnet only |
+| On-chain verify + instant unlock (SSE) | Demo — testnet only |
+| Demo UI (`frontend/`) | Demo checkout, not a hosted product |
+| Rust sidecar (`x402-module/`) | Preferred runtime for local experiments |
 | Node sidecar (`backend/`) | Reference implementation, same API |
 | Ledger | In-memory (restart loses state) |
-| **BSC → BSC settlement** | **Working**: contract treasury → operator `sweepAll` → vault |
-| **Cross-chain settlement** (e.g. Algo → BSC vault) | **Not production-ready**; ledger stays `pending`; bridge worker is experimental |
-| CCTP / CCIP / Wormhole / Allbridge auto-rail | Not wired for your testnet checkout tokens |
-| Production hardening | See [ROADMAP.md](ROADMAP.md) |
+| **BSC → BSC settlement** | **Testnet PoC**: contract treasury → operator `sweepAll` → vault |
+| **Cross-chain settlement** (e.g. Algo → BSC vault) | Experimental; ledger often `pending`; bridge worker is a lab script |
+| CCTP / CCIP / Wormhole / Allbridge auto-rail | Not wired for testnet checkout tokens |
+| Production readiness | **No** — persistence, auth, monitoring, key management, audits: see [ROADMAP.md](ROADMAP.md) |
 
 **Testnet token reality:** checkout uses Circle testnet USDC on Algorand (ASA `10458941`) and a custom BSC test USDC (`0xBC745…`). Public bridges (Allbridge, Wormhole) target **mainnet** USDC addresses — they do not move those test tokens. Full cross-chain E2E on testnet is limited; **same-chain BSC settlement is the reference path that works today.**
 
@@ -55,10 +61,10 @@ User pays from anywhere  →  Service unlocks instantly  →  Merchant settles o
 | Path | Role |
 |------|------|
 | [`config/`](config/) | Networks, treasuries, vault, resources, prices — **not** in merchant app code |
-| [`x402-module/`](x402-module/) | Production-oriented Rust sidecar |
+| [`x402-module/`](x402-module/) | Rust sidecar (local / testnet experiments) |
 | [`backend/`](backend/) | Node reference, same HTTP API |
 | [`frontend/`](frontend/) | Optional demo checkout |
-| [`contracts/`](contracts/) | `X402Treasury.sol` — per-chain EVM payment collector |
+| [`contracts/`](contracts/) | `X402Treasury.sol` — testnet treasury pattern (not audited for mainnet) |
 | [`bridge-worker/`](bridge-worker/) | Experimental Allbridge script (Algo → BSC); see limitations above |
 
 Run **one** sidecar process (Node **or** Rust), not both on the same port.
@@ -89,11 +95,11 @@ After verify, a ledger entry is created:
 | Pay on Algo, vault on BSC | `pending` (cross-chain) | No automatic bridge with current test tokens |
 | `settlement.mode: mock` | fake `settled` | Demo only |
 
-**EVM treasury model (production):** deploy [`X402Treasury`](contracts/src/X402Treasury.sol) on each EVM chain. Users pay the **contract**. A **sponsor operator** (hot wallet with BNB/ETH) calls `sweepAll`; the contract holds USDC, not native gas. See [docs/DEPLOY_BSC_TREASURY.md](docs/DEPLOY_BSC_TREASURY.md).
+**EVM treasury pattern (testnet PoC):** deploy [`X402Treasury`](contracts/src/X402Treasury.sol) on a test EVM chain. Users pay the **contract**; a **sponsor operator** calls `sweepAll`. This illustrates separation of user funds and gas — not an audited mainnet deployment guide. See [docs/DEPLOY_BSC_TREASURY.md](docs/DEPLOY_BSC_TREASURY.md).
 
 ---
 
-## Quick start
+## Quick start (local testnet)
 
 ### Requirements
 
@@ -119,7 +125,7 @@ cp x402-module/.env.example x402-module/.env
 
 ### 3. Run sidecar (pick one)
 
-**Rust (recommended):**
+**Rust (for local runs):**
 
 ```bash
 cd x402-module
@@ -230,14 +236,14 @@ scripts/             deploy-bsc-treasury.sh, settlement-demo.sh
 
 ---
 
-## Docker
+## Docker (local only)
 
 ```bash
 docker compose up x402-node    # host :4000
 docker compose up x402-rust    # host :4001
 ```
 
-Use **one** service in production. Mount `./config/config.json`.
+Run **one** sidecar at a time. Mount `./config/config.json`. Not intended as a production deployment recipe.
 
 ---
 

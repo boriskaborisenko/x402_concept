@@ -1,0 +1,62 @@
+{
+  "merchants": {
+    "m_001": {
+      "id": "m_001",
+      "name": "AI Agent Resource Provider",
+      "settlement": {
+        "asset": "USDC",
+        "chain": "bsc",
+        "address": "0x9E737B1C3138b1Cc9b3Eb0Ab9F6e312A09CbB09A",
+        "frequency": "daily",
+        "minimum_payout": "10.00"
+      }
+    }
+  },
+  "chains": {
+    "bsc": {
+      "name": "BSC Testnet",
+      "chainId": 97,
+      "rpcUrl": "https://bsc-testnet-rpc.publicnode.com",
+      "recipientAddress": "0x9E737B1C3138b1Cc9b3Eb0Ab9F6e312A09CbB09A",
+      "usdcAddress": "0x64544E40db4C339909fc72C2585476a61BCE32AB",
+      "nativeSymbol": "BNB",
+      "nativeDecimals": 18,
+      "stableSymbol": "USDC",
+      "stableDecimals": 18,
+      "explorerUrl": "https://testnet.bscscan.com/tx/"
+    },
+    "algorand": {
+      "name": "Algorand Testnet",
+      "genesisId": "testnet-v1.0",
+      "algodUrl": "https://testnet-api.algonode.cloud",
+      "indexerUrl": "https://testnet-idx.algonode.cloud",
+      "recipientAddress": "X402MERCYPFSTVWR6LCHTXVHP4P36E7O3JZ35J7R3Z3M6WID7JOH2QC7MY",
+      "usdcAssetId": 10458941,
+      "nativeSymbol": "ALGO",
+      "nativeDecimals": 6,
+      "stableSymbol": "USDCa",
+      "stableDecimals": 6,
+      "explorerUrl": "https://testnet.explorer.perawallet.app/tx/"
+    }
+  },
+  "resources": [
+    {
+      "id": "premium_advice",
+      "name": "Premium AI Agent Advice",
+      "priceInUsd": "0.25",
+      "description": "Get deep strategic planning from an advanced, fine-tuned agent."
+    },
+    {
+      "id": "api_key",
+      "name": "Developer API Access Key",
+      "priceInUsd": "1.00",
+      "description": "Generate a unique developer API token with 10,000 monthly credits."
+    },
+    {
+      "id": "image_generation",
+      "name": "Custom AI Image Generation",
+      "priceInUsd": "0.50",
+      "description": "Generate high-resolution hyper-realistic assets on-demand."
+    }
+  ]
+}
