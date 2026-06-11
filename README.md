@@ -255,14 +255,4 @@ docker compose up x402-rust    # host :4001
 
 Run **one** sidecar at a time. Mount `./config/config.json`. Not intended as a production deployment recipe.
 
----
 
-## Troubleshooting
-
-**Port 4000 in use** — stop the other sidecar or `PORT=4001 cargo run` and point the frontend proxy at it.
-
-**Sweep never runs** — `treasury.type` must be `Contract`, `SWEEP_OPERATOR_PRIVATE_KEY` set, operator funded with BNB.
-
-**Algorand underflow** — insufficient USDCa (`10458941`) or ALGO for fees; fund via [Circle testnet faucet](https://faucet.circle.com/).
-
-**Paid on Algo, vault on BSC empty** — expected on testnet until a mainnet-compatible bridge rail is integrated or you confirm settlement manually.
