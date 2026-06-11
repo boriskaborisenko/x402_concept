@@ -19,7 +19,7 @@ createAppKit({
   networks,
   projectId,
   metadata: {
-    name: 'Chain-Agnostic x402 Easy Checkout',
+    name: 'x402 Payment Sidecar — Demo Checkout',
     description: 'Seamless cross-chain payments for human and agentic commerce',
     url: 'http://localhost:3000',
     icons: ['https://avatars.githubusercontent.com/u/1994348']

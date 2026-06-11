@@ -1,5 +1,5 @@
 {
-  "name": "x402-chain-agnostic-frontend",
+  "name": "x402-payment-sidecar-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",

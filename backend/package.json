@@ -1,7 +1,7 @@
 {
-  "name": "x402-chain-agnostic-backend",
+  "name": "x402-payment-sidecar-backend",
   "version": "1.0.0",
-  "description": "Backend for Chain-Agnostic x402 payment routing concept",
+  "description": "Stripe-like sidecar for HTTP 402 crypto payments (demo / testnet)",
   "main": "server.js",
   "type": "module",
   "scripts": {

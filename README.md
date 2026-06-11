@@ -1,10 +1,20 @@
-# Chain-Agnostic x402
+# NOT FOR PRODUCTION!!
 
-> **Test / proof-of-concept only — not production-ready.**
->
-> This repository is a **sandbox** for exploring chain-agnostic [x402](https://www.x402.org/) checkout: testnet wallets, in-memory ledger, experimental settlement paths, and demo UI. Do **not** use it for real money, mainnet traffic, or merchant production without a full security and ops review. See [ROADMAP.md](ROADMAP.md) for what is missing.
+# x402 Payment Sidecar
 
-HTTP **402 Payment Required** sidecar (concept): users pay from **any supported chain**, access unlocks **immediately** after on-chain verification, and liquidity is **aggregated to a vault** asynchronously (settlement does not block checkout).
+## Stripe-like sidecar for HTTP 402 crypto payments.
+
+---
+
+## This is not final payment infrastructure
+
+This repository is a **demonstration** of how [HTTP 402](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/402) can become a **plug-and-play monetization layer** for APIs and AI services: the merchant keeps their **backend clean**, while **crypto payment verification**, **payment routes**, and **unlock logic** are moved into a **separate sidecar**.
+
+Testnet only · in-memory ledger · experimental settlement · demo UI. Do **not** use for real money or mainnet. See [ROADMAP.md](ROADMAP.md).
+
+---
+
+In this PoC, users pay from supported chains; access unlocks **immediately** after on-chain verification; liquidity can be aggregated to a vault later (settlement does not block checkout).
 
 ---
 
@@ -232,7 +242,7 @@ scripts/             deploy-bsc-treasury.sh, settlement-demo.sh
 | [docs/SETTLEMENT_TESTNET.md](docs/SETTLEMENT_TESTNET.md) | Settlement modes and admin API |
 | [docs/DEPLOY_BSC_TREASURY.md](docs/DEPLOY_BSC_TREASURY.md) | Contract treasury on BSC testnet |
 | [docs/BRIDGE_ALGO_BSC.md](docs/BRIDGE_ALGO_BSC.md) | Bridge experiment + token mismatch |
-| [chain_agnostic_x402_concept.md](chain_agnostic_x402_concept.md) | Product concept |
+| [chain_agnostic_x402_concept.md](chain_agnostic_x402_concept.md) | Long-form product concept (legacy filename) |
 
 ---
 

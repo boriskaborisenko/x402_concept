@@ -36,5 +36,5 @@ startSettlementWorker(ctx);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-  console.log(`x402 Chain-Agnostic Backend listening on port ${PORT}`);
+  console.log(`x402 Payment Sidecar (Node) listening on port ${PORT}`);
 });
